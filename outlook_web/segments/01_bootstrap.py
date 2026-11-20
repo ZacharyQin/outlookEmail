@@ -2549,6 +2549,27 @@ def init_db():
         ON account_aliases(alias_email)
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS account_aux_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            primary_account_id INTEGER NOT NULL,
+            aux_account_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(primary_account_id, aux_account_id),
+            CHECK(primary_account_id != aux_account_id),
+            FOREIGN KEY(primary_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+            FOREIGN KEY(aux_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_account_aux_links_primary
+        ON account_aux_links(primary_account_id)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_account_aux_links_aux
+        ON account_aux_links(aux_account_id)
+    ''')
+
     # 回填历史保留邮件的规范化排序时间，保持旧数据库升级后分页顺序稳定。
     backfill_retained_normal_mail_received_at_sort(conn)
 

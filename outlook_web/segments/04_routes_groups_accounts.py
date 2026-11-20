@@ -1930,6 +1930,81 @@ def api_get_account(account_id):
         }
     })
 
+def aux_mailbox_payload(row) -> Dict[str, Any]:
+    return {
+        'id': int(row['id']),
+        'email': row['email'],
+        'provider': row['provider'] or 'custom',
+        'imap_host': row['imap_host'] or '',
+        'imap_port': int(row['imap_port'] or 993),
+    }
+
+
+def list_aux_mailboxes(account_id: int):
+    return get_db().execute('''
+        SELECT a.id, a.email, a.provider, a.imap_host, a.imap_port
+        FROM account_aux_links l
+        JOIN accounts a ON a.id = l.aux_account_id
+        WHERE l.primary_account_id = ? AND a.account_type = 'imap'
+        ORDER BY l.id
+    ''', (account_id,)).fetchall()
+
+
+@app.route('/api/accounts/<int:account_id>/aux-mailboxes', methods=['GET'])
+@login_required
+def api_list_aux_mailboxes(account_id):
+    if not get_account_by_id(account_id):
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
+    return jsonify({
+        'success': True,
+        'aux_mailboxes': [aux_mailbox_payload(row) for row in list_aux_mailboxes(account_id)],
+    })
+
+
+@app.route('/api/accounts/<int:account_id>/aux-mailboxes', methods=['POST'])
+@login_required
+def api_add_aux_mailbox(account_id):
+    data = request.get_json(silent=True) or {}
+    aux_account_id = data.get('aux_account_id')
+    if type(aux_account_id) is not int or aux_account_id <= 0:
+        return jsonify({'success': False, 'error': '辅助邮箱无效'}), 400
+    if aux_account_id == account_id:
+        return jsonify({'success': False, 'error': '不能关联自己'}), 400
+    if not get_account_by_id(account_id):
+        return jsonify({'success': False, 'error': '账号不存在'}), 400
+    aux = get_account_by_id(aux_account_id)
+    if not aux or str(aux.get('account_type') or '').strip().lower() != 'imap':
+        return jsonify({'success': False, 'error': '只能关联已有的 IMAP 邮箱'}), 400
+    db = get_db()
+    try:
+        db.execute(
+            'INSERT INTO account_aux_links (primary_account_id, aux_account_id) VALUES (?, ?)',
+            (account_id, aux_account_id),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return jsonify({'success': False, 'error': '该辅助邮箱已关联'}), 409
+    row = db.execute(
+        'SELECT id, email, provider, imap_host, imap_port FROM accounts WHERE id = ?',
+        (aux_account_id,),
+    ).fetchone()
+    return jsonify({'success': True, 'aux_mailbox': aux_mailbox_payload(row)})
+
+
+@app.route('/api/accounts/<int:account_id>/aux-mailboxes/<int:aux_account_id>', methods=['DELETE'])
+@login_required
+def api_delete_aux_mailbox(account_id, aux_account_id):
+    db = get_db()
+    cursor = db.execute(
+        'DELETE FROM account_aux_links WHERE primary_account_id = ? AND aux_account_id = ?',
+        (account_id, aux_account_id),
+    )
+    db.commit()
+    if cursor.rowcount < 1:
+        return jsonify({'success': False, 'error': '关联不存在'}), 404
+    return jsonify({'success': True})
+
 
 def parse_alias_payload(raw_aliases: Any) -> List[str]:
     if isinstance(raw_aliases, str):

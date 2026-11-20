@@ -705,17 +705,44 @@ def get_account_tags_map(account_ids: List[int], db=None) -> Dict[int, List[Dict
             tags_by_account.setdefault(account_id, []).append(tag)
     return tags_by_account
 
+def get_aux_mailboxes_map(account_ids: List[int], db=None) -> Dict[int, List[Dict]]:
+    if not account_ids:
+        return {}
+    database = db or get_db()
+    linked = {}
+    for chunk_ids in chunk_account_ids(account_ids):
+        placeholders = ','.join('?' * len(chunk_ids))
+        rows = database.execute(f'''
+            SELECT l.primary_account_id, a.id, a.email, a.provider, a.imap_host, a.imap_port
+            FROM account_aux_links l
+            JOIN accounts a ON a.id = l.aux_account_id
+            WHERE l.primary_account_id IN ({placeholders})
+              AND a.account_type = 'imap'
+            ORDER BY l.primary_account_id, l.id
+        ''', chunk_ids).fetchall()
+        for row in rows:
+            linked.setdefault(int(row['primary_account_id']), []).append({
+                'id': int(row['id']),
+                'email': row['email'],
+                'provider': row['provider'] or 'custom',
+                'imap_host': row['imap_host'] or '',
+                'imap_port': int(row['imap_port'] or 993),
+            })
+    return linked
+
 
 def serialize_account_rows(rows: List[sqlite3.Row], db=None) -> List[Dict]:
     account_ids = [int(row['id']) for row in rows]
     aliases_by_account = get_account_aliases_map(account_ids, db)
     tags_by_account = get_account_tags_map(account_ids, db)
+    aux_by_account = get_aux_mailboxes_map(account_ids, db)
 
     accounts = []
     for row in rows:
         account_id = int(row['id'])
         account = resolve_account_record(row, aliases=aliases_by_account.get(account_id, []))
         account['tags'] = tags_by_account.get(account_id, [])
+        account['aux_mailboxes'] = aux_by_account.get(account_id, [])
         accounts.append(account)
     return accounts
 
@@ -1491,7 +1518,8 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         ),
         'created_at': account.get('created_at', ''),
         'updated_at': account.get('updated_at', ''),
-        'tags': account.get('tags', [])
+        'tags': account.get('tags', []),
+        'aux_mailboxes': account.get('aux_mailboxes', []),
     }
     if include_client_meta:
         payload['client_id'] = (
