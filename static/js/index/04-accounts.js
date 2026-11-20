@@ -16,6 +16,7 @@
                 provider: String(source.provider || '').trim().toLowerCase(),
                 authorization_type: String(source.authorization_type || '').trim().toLowerCase(),
                 status: String(source.status || '').trim().toLowerCase(),
+                aux_mailboxes: Array.isArray(source.aux_mailboxes) ? source.aux_mailboxes : [],
             };
         }
 
@@ -33,6 +34,7 @@
 
             document.getElementById('currentAccount').classList.add('show');
             document.getElementById('currentAccountEmail').textContent = email;
+            renderAuxMailboxLinks(currentAccountSummary.aux_mailboxes);
             showEmailList({ scheduleLoadCheck: false });
             closeMobilePanels();
             updateMobileContext();
@@ -84,6 +86,17 @@
             if (!cache) {
                 loadEmails(email);
             }
+        }
+
+        function renderAuxMailboxLinks(mailboxes) {
+            const container = document.getElementById('auxMailboxLinks');
+            if (!container) {
+                return;
+            }
+            const items = Array.isArray(mailboxes) ? mailboxes : [];
+            container.innerHTML = items.map(item => `
+                <button type="button" onclick="event.stopPropagation(); selectAccount('${escapeJs(item.email)}', ${Number(item.id) || 0})">${escapeHtml(item.email)}</button>
+            `).join('');
         }
 
         // 隐藏添加账号模态框

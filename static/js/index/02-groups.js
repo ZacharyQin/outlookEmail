@@ -1555,6 +1555,14 @@
                                 <div class="account-email" ${renderAccountSortNameAttributes(acc)} title="${escapeHtml(acc.email)}" style="${acc.last_refresh_status === 'failed' ? 'color: #b42318;' : ''}">
                                     ${escapeHtml(acc.email)}
                                 </div>
+                                ${(acc.aux_mailboxes || []).length ? `
+                                    <button type="button" class="account-action-btn" onclick="event.stopPropagation(); this.nextElementSibling.hidden = !this.nextElementSibling.hidden">辅助邮箱</button>
+                                    <div hidden>
+                                        ${(acc.aux_mailboxes || []).map(item => `
+                                            <button type="button" onclick="event.stopPropagation(); selectAccount('${escapeJs(item.email)}', ${Number(item.id) || 0})">${escapeHtml(item.email)}</button>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
                             </div>
                         </div>
                         <div class="account-meta-row">
